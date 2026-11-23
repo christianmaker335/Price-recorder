@@ -13,8 +13,12 @@ def price_of(address):
              if p["baseToken"]["address"] == address and p.get("chainId") == "solana"]
     if not pairs:
         return None
-    best = max(pairs, key=lambda p: (p.get("liquidity") or {}).get("usd") or 0)
-    return best.get("priceUsd")
+        good = [float(p["priceUsd"]) for p in pairs
+                if p.get("priceUsd") and ((p.get("liquidity") or {}).get("usd") or 0) >= 50000]
+        if not good:
+            return None
+        good.sort()
+        return "{:.15f}".format(good[(len(good) - 1) // 2])
 
 stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
 rows = []
