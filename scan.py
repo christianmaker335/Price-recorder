@@ -3,12 +3,16 @@ import time
 import urllib.request
 
 QUERIES = ["BONK", "JUP", "WIF", "PYTH", "RAY"]
+for _line in open("watchlist.txt"):
+    _parts = _line.split()
+    if len(_parts) == 2:
+        QUERIES.append(_parts[0])
 CHAIN = "solana"
 MIN_LIQUIDITY = 50000
 MIN_VOLUME_24H = 20000
 MIN_AGE_HOURS = 24
 MIN_HOLDERS = 500
-MAX_CHECKS = 15
+MAX_CHECKS = 25
 
 def get_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -26,6 +30,8 @@ def scan():
         for p in data.get("pairs", []):
             if p.get("chainId") != CHAIN:
                 continue
+            if len(q) > 30 and p["baseToken"]["address"] != q:
+                continue
             liq = (p.get("liquidity") or {}).get("usd") or 0
             vol = (p.get("volume") or {}).get("h24") or 0
             created = p.get("pairCreatedAt")
@@ -41,7 +47,15 @@ def scan():
 
 def security(addr):
     url = "https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses=" + addr
-    return (get_json(url).get("result") or {}).get(addr)
+    for attempt in range(3):
+        try:
+            result = (get_json(url).get("result") or {}).get(addr)
+            if result:
+                return result
+        except Exception:
+            pass
+        time.sleep(3)
+    return None
 
 def evaluate(info):
     if not info:
