@@ -11,14 +11,15 @@ def price_of(address):
     data = get_json("https://api.dexscreener.com/latest/dex/search?q=" + address)
     pairs = [p for p in data.get("pairs", [])
              if p["baseToken"]["address"] == address and p.get("chainId") == "solana"]
-    if not pairs:
+    good = []
+    for p in pairs:
+        liq = (p.get("liquidity") or {}).get("usd") or 0
+        if p.get("priceUsd") and liq >= 50000:
+            good.append(float(p["priceUsd"]))
+    if not good:
         return None
-        good = [float(p["priceUsd"]) for p in pairs
-                if p.get("priceUsd") and ((p.get("liquidity") or {}).get("usd") or 0) >= 50000]
-        if not good:
-            return None
-        good.sort()
-        return "{:.15f}".format(good[(len(good) - 1) // 2])
+    good.sort()
+    return "{:.15f}".format(good[(len(good) - 1) // 2])
 
 stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
 rows = []
@@ -35,6 +36,8 @@ for line in open("watchlist.txt"):
     if price:
         rows.append(f"{stamp},{name},{addr},{price}")
         print(stamp, name, price)
+    else:
+        print(stamp, name, "NO PRICE FOUND")
     time.sleep(2)
 
 with open("prices.csv", "a") as f:
