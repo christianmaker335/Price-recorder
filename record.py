@@ -21,9 +21,24 @@ def price_of(address):
     good.sort()
     return "{:.15f}".format(good[(len(good) - 1) // 2])
 
+def all_lines():
+    out = []
+    seen = set()
+    for path in ("watchlist.txt", "auto_watchlist.txt", "paper_list.txt"):
+        try:
+            lines = open(path).readlines()
+        except FileNotFoundError:
+            continue
+        for line in lines:
+            parts = line.split()
+            if len(parts) == 2 and parts[0] not in seen:
+                seen.add(parts[0])
+                out.append(line)
+    return out
+
 stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
 rows = []
-for line in open("watchlist.txt"):
+for line in all_lines():
     parts = line.split()
     if len(parts) != 2:
         continue
