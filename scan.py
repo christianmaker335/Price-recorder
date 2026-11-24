@@ -54,7 +54,7 @@ def security(addr):
                 return result
         except Exception:
             pass
-        time.sleep(3)
+        time.sleep(10)
     return None
 
 def evaluate(info):
@@ -91,7 +91,7 @@ for t in scan()[:MAX_CHECKS]:
     t["verdict"] = "ACCEPT" if not reasons else "REJECT"
     t["reasons"] = reasons
     out.append(t)
-    time.sleep(1.5)
+    time.sleep(8)
 
 with open("signals.json", "w") as f:
     json.dump({"updated": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), "items": out}, f)
