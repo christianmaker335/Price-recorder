@@ -13,7 +13,11 @@ MIN_LIQUIDITY = 50000
 MIN_VOLUME_24H = 20000
 MIN_AGE_HOURS = 24
 MIN_HOLDERS = 500
-MAX_CHECKS = 25
+MAX_CHECKS = 40
+AUTO_CAP = 15
+DROP_AFTER = 3
+PROMOTE_AFTER = 5
+SKIP = {"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"}
 
 def get_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -165,6 +169,37 @@ def extra_checks(addr):
         time.sleep(2)
     return reasons, answered
 
+def read_list(path):
+    items = []
+    try:
+        for line in open(path):
+            parts = line.split()
+            if len(parts) == 2:
+                items.append((parts[0], parts[1]))
+    except FileNotFoundError:
+        pass
+    return items
+
+def discover():
+    key = os.environ.get("JUPITER_API_KEY", "")
+    if not key:
+        return []
+    data = fetch("https://api.jup.ag/tokens/v2/toporganicscore/24h?limit=30", {"x-api-key": key})
+    found = []
+    if isinstance(data, list):
+        for d in data:
+            if d.get("id") and d["id"] not in SKIP:
+                found.append(d["id"])
+    return found
+
+for _path in ("auto_watchlist.txt", "paper_list.txt"):
+    for _a, _n in read_list(_path):
+        if _a not in QUERIES:
+            QUERIES.append(_a)
+for _a in discover():
+    if _a not in QUERIES:
+        QUERIES.append(_a)
+
 out = []
 for t in scan()[:MAX_CHECKS]:
     addr = t["address"]
@@ -189,6 +224,49 @@ for t in scan()[:MAX_CHECKS]:
     print(t["symbol"], t["verdict"], answered, reasons)
     time.sleep(8)
 
+try:
+    hist = json.load(open("scan_history.json"))
+except Exception:
+    hist = {}
+checked = set()
+for t in out:
+    a = t["address"]
+    checked.add(a)
+    h = hist.setdefault(a, {"symbol": t["symbol"], "scans": 0, "accept_streak": 0, "reject_streak": 0})
+    h["symbol"] = t["symbol"]
+    h["scans"] += 1
+    if t["verdict"] == "ACCEPT":
+        h["accept_streak"] += 1
+        h["reject_streak"] = 0
+    else:
+        h["reject_streak"] += 1
+        h["accept_streak"] = 0
+    t["scans"] = h["scans"]
+    t["accept_streak"] = h["accept_streak"]
+    t["ready"] = h["accept_streak"] >= PROMOTE_AFTER
+
+auto_old = [a for a, n in read_list("auto_watchlist.txt")]
+for a in auto_old:
+    if a not in checked and a in hist:
+        hist[a]["reject_streak"] += 1
+        hist[a]["accept_streak"] = 0
+
+protected = set(a for a, n in read_list("watchlist.txt") + read_list("paper_list.txt"))
+cands = []
+for a, h in hist.items():
+    if a in protected or a in SKIP:
+        continue
+    if h["accept_streak"] >= 1 or (a in auto_old and h["reject_streak"] < DROP_AFTER):
+        cands.append((h["accept_streak"], h["scans"], a))
+cands.sort(reverse=True)
+cands = cands[:AUTO_CAP]
+
+with open("auto_watchlist.txt", "w") as f:
+    for streak, sc, a in cands:
+        f.write(a + " " + hist[a]["symbol"].replace(" ", "") + "\n")
+with open("scan_history.json", "w") as f:
+    json.dump(hist, f)
+    
 with open("signals.json", "w") as f:
     json.dump({"updated": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), "items": out}, f)
 print(len(out), "tokens checked")
