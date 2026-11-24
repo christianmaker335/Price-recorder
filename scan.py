@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import urllib.request
 
@@ -82,15 +83,110 @@ def evaluate(info):
         reasons.append("holder_count unknown")
     return reasons
 
+RUGCHECK_MAX_RISK = 60
+JUP_MIN_ORGANIC = 40
+JUP_REQUIRE_VERIFIED = True
+GT_MIN_SCORE = 40
+
+def fetch(url, headers=None, tries=3, wait=5):
+    h = {"User-Agent": "Mozilla/5.0"}
+    if headers:
+        h.update(headers)
+    for attempt in range(tries):
+        try:
+            req = urllib.request.Request(url, headers=h)
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return json.load(r)
+        except Exception:
+            time.sleep(wait)
+    return None
+
+def check_rugcheck(addr):
+    data = fetch("https://api.rugcheck.xyz/v1/tokens/" + addr + "/report/summary")
+    if not data or "score_normalised" not in data:
+        return None
+    out = []
+    score = data.get("score_normalised")
+    if isinstance(score, (int, float)) and score >= RUGCHECK_MAX_RISK:
+        out.append("RugCheck risk score " + str(score))
+    if data.get("rugged"):
+        out.append("RugCheck says rugged")
+    return out
+
+def check_jupiter(addr):
+    key = os.environ.get("JUPITER_API_KEY", "")
+    if not key:
+        return None
+    data = fetch("https://api.jup.ag/tokens/v2/search?query=" + addr, {"x-api-key": key})
+    if not isinstance(data, list):
+        return None
+    item = None
+    for d in data:
+        if d.get("id") == addr:
+            item = d
+    if item is None:
+        return ["not found on Jupiter"]
+    out = []
+    audit = item.get("audit") or {}
+    if audit.get("isSus"):
+        out.append("Jupiter flags suspicious")
+    organic = item.get("organicScore")
+    if organic is not None and organic < JUP_MIN_ORGANIC:
+        out.append("Jupiter organic score " + str(round(organic)))
+    if JUP_REQUIRE_VERIFIED and not item.get("isVerified"):
+        out.append("not verified on Jupiter")
+    return out
+
+def check_gecko(addr):
+    data = fetch("https://api.geckoterminal.com/api/v2/networks/solana/tokens/" + addr + "/info")
+    if not data or "data" not in data:
+        return None
+    attrs = (data.get("data") or {}).get("attributes") or {}
+    out = []
+    gt = attrs.get("gt_score")
+    if gt is not None and gt < GT_MIN_SCORE:
+        out.append("GeckoTerminal trust score " + str(round(gt)))
+    if not attrs.get("websites") and not attrs.get("twitter_handle"):
+        out.append("no website or X account listed")
+    return out
+
+def extra_checks(addr):
+    reasons = []
+    answered = []
+    for name, fn in (("RugCheck", check_rugcheck), ("Jupiter", check_jupiter), ("GeckoTerminal", check_gecko)):
+        try:
+            result = fn(addr)
+        except Exception:
+            result = None
+        if result is None:
+            continue
+        answered.append(name)
+        reasons += result
+        time.sleep(2)
+    return reasons, answered
+
 out = []
 for t in scan()[:MAX_CHECKS]:
+    addr = t["address"]
+    reasons = []
+    answered = []
     try:
-        reasons = evaluate(security(t["address"]))
-    except Exception as e:
-        reasons = ["check failed"]
+        gp = security(addr)
+        reasons += evaluate(gp)
+        if gp:
+            answered.append("GoPlus")
+    except Exception:
+        reasons.append("GoPlus check failed")
+    extra_reasons, extra_answered = extra_checks(addr)
+    reasons += extra_reasons
+    answered += extra_answered
+    if len(extra_answered) < 2:
+        reasons.append("fewer than 2 extra sources answered")
     t["verdict"] = "ACCEPT" if not reasons else "REJECT"
     t["reasons"] = reasons
+    t["checked_by"] = answered
     out.append(t)
+    print(t["symbol"], t["verdict"], answered, reasons)
     time.sleep(8)
 
 with open("signals.json", "w") as f:
