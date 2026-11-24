@@ -19,5 +19,5 @@ jobs:
       - run: |
           git config user.name "scan-bot"
           git config user.email "scan-bot@users.noreply.github.com"
-          git add signals.json
-          git diff --cached --quiet || (git commit -m "scan tokens" && git push)
+          git add signals.json auto_watchlist.txt scan_history.json
+          git diff --cached --quiet || (git commit -m "scan tokens" && git pull --rebase && git push)
