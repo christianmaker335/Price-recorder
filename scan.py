@@ -18,6 +18,10 @@ AUTO_CAP = 15
 DROP_AFTER = 3
 PROMOTE_AFTER = 5
 SKIP = {"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"}
+MAX_HARD_REJECTS = 3
+MAX_UNPROVEN_SCANS = 15
+TIME_LIMIT = 35 * 60
+START = time.time()
 
 def get_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -180,6 +184,31 @@ def read_list(path):
         pass
     return items
 
+SOFT = ("no security data", "GoPlus check failed", "fewer than", "unknown")
+
+def is_soft(reasons):
+    for r in reasons:
+        if not any(s in r for s in SOFT):
+            return False
+    return True
+
+try:
+    banned = json.load(open("banned.json"))
+except Exception:
+    banned = {}
+unbanned_now = []
+try:
+    _lines = open("unban.txt").read().split()
+except FileNotFoundError:
+    _lines = []
+for _a in _lines:
+    if _a in banned:
+        del banned[_a]
+        unbanned_now.append(_a)
+        print("Unbanned", _a)
+if _lines:
+    open("unban.txt", "w").write("# one address per line to un-ban a token\n")
+
 def discover():
     key = os.environ.get("JUPITER_API_KEY", "")
     if not key:
@@ -200,8 +229,20 @@ for _a in discover():
     if _a not in QUERIES:
         QUERIES.append(_a)
 
+QUERIES[:] = [q for q in QUERIES if q not in banned]
+manual_set = set(a for a, n in read_list("watchlist.txt"))
+paper_set = set(a for a, n in read_list("paper_list.txt"))
+auto_old = [a for a, n in read_list("auto_watchlist.txt")]
+priority = manual_set | paper_set | set(auto_old)
+found = [t for t in scan() if t["address"] not in banned]
+found.sort(key=lambda t: (0 if t["address"] in priority else 1, -t["liquidity"]))
+in_found = set(t["address"] for t in found)
+
 out = []
-for t in scan()[:MAX_CHECKS]:
+for t in found[:MAX_CHECKS]:
+    if time.time() - START > TIME_LIMIT:
+        print("Time limit reached, stopping checks")
+        break
     addr = t["address"]
     reasons = []
     answered = []
@@ -228,6 +269,8 @@ try:
     hist = json.load(open("scan_history.json"))
 except Exception:
     hist = {}
+for a in unbanned_now:
+    hist.pop(a, None)
 checked = set()
 for t in out:
     a = t["address"]
@@ -235,26 +278,48 @@ for t in out:
     h = hist.setdefault(a, {"symbol": t["symbol"], "scans": 0, "accept_streak": 0, "reject_streak": 0})
     h["symbol"] = t["symbol"]
     h["scans"] += 1
+    recent = h.get("recent", [])
     if t["verdict"] == "ACCEPT":
         h["accept_streak"] += 1
         h["reject_streak"] = 0
+        recent.append("A")
     else:
         h["reject_streak"] += 1
         h["accept_streak"] = 0
+        recent.append("S" if is_soft(t["reasons"]) else "H")
+    h["recent"] = recent[-10:]
+    h["ready"] = h["accept_streak"] >= PROMOTE_AFTER
+    if h["ready"]:
+        h["ever_ready"] = True
     t["scans"] = h["scans"]
     t["accept_streak"] = h["accept_streak"]
-    t["ready"] = h["accept_streak"] >= PROMOTE_AFTER
+    t["ready"] = h["ready"]
 
-auto_old = [a for a, n in read_list("auto_watchlist.txt")]
 for a in auto_old:
-    if a not in checked and a in hist:
+    if a not in checked and a not in in_found and a in hist:
+        hist[a]["scans"] += 1
         hist[a]["reject_streak"] += 1
         hist[a]["accept_streak"] = 0
+        hist[a]["ready"] = False
+        hist[a]["recent"] = (hist[a].get("recent", []) + ["S"])[-10:]
 
-protected = set(a for a, n in read_list("watchlist.txt") + read_list("paper_list.txt"))
+for a, h in list(hist.items()):
+    if a in banned or a in paper_set:
+        continue
+    recent = h.get("recent", [])
+    why = None
+    if recent.count("H") >= MAX_HARD_REJECTS:
+        why = "failed safety checks " + str(recent.count("H")) + " times in the last " + str(len(recent)) + " scans"
+    elif not h.get("ever_ready") and h["scans"] >= MAX_UNPROVEN_SCANS:
+        why = "did not pass " + str(PROMOTE_AFTER) + " scans in a row within " + str(h["scans"]) + " scans"
+    if why:
+        banned[a] = {"symbol": h["symbol"], "reason": why, "when": time.strftime("%Y-%m-%d %H:%M", time.gmtime())}
+        print("BANNED", h["symbol"], why)
+
+protected = manual_set | paper_set
 cands = []
 for a, h in hist.items():
-    if a in protected or a in SKIP:
+    if a in protected or a in SKIP or a in banned:
         continue
     if h["accept_streak"] >= 1 or (a in auto_old and h["reject_streak"] < DROP_AFTER):
         cands.append((h["accept_streak"], h["scans"], a))
@@ -266,6 +331,8 @@ with open("auto_watchlist.txt", "w") as f:
         f.write(a + " " + hist[a]["symbol"].replace(" ", "") + "\n")
 with open("scan_history.json", "w") as f:
     json.dump(hist, f)
+with open("banned.json", "w") as f:
+    json.dump(banned, f)
     
 with open("signals.json", "w") as f:
     json.dump({"updated": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), "items": out}, f)
