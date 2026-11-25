@@ -24,6 +24,10 @@ def price_of(address):
 def all_lines():
     out = []
     seen = set()
+    try:
+        banned = json.load(open("banned.json"))
+    except Exception:
+        banned = {}
     for path in ("watchlist.txt", "auto_watchlist.txt", "paper_list.txt"):
         try:
             lines = open(path).readlines()
@@ -31,7 +35,7 @@ def all_lines():
             continue
         for line in lines:
             parts = line.split()
-            if len(parts) == 2 and parts[0] not in seen:
+            if len(parts) == 2 and parts[0] not in seen and parts[0] not in banned:
                 seen.add(parts[0])
                 out.append(line)
     return out
