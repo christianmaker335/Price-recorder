@@ -39,8 +39,6 @@ for label, path in (("manual", "watchlist.txt"), ("auto", "auto_watchlist.txt"),
     for addr, name in read_list(path):
         groups.setdefault(addr, []).append(label)
         names.setdefault(addr, name)
-            if addr in banned:
-        continue
 
 rows = {}
 try:
@@ -61,6 +59,7 @@ for item in load_json("signals.json", {}).get("items", []):
     signals[item["address"]] = item
 hist = load_json("scan_history.json", {})
 banned = load_json("banned.json", {})
+groups = {a: g for a, g in groups.items() if a not in banned}
 
 tokens = []
 for addr, gl in groups.items():
