@@ -39,6 +39,8 @@ for label, path in (("manual", "watchlist.txt"), ("auto", "auto_watchlist.txt"),
     for addr, name in read_list(path):
         groups.setdefault(addr, []).append(label)
         names.setdefault(addr, name)
+            if addr in banned:
+        continue
 
 rows = {}
 try:
@@ -58,6 +60,7 @@ signals = {}
 for item in load_json("signals.json", {}).get("items", []):
     signals[item["address"]] = item
 hist = load_json("scan_history.json", {})
+banned = load_json("banned.json", {})
 
 tokens = []
 for addr, gl in groups.items():
@@ -75,7 +78,7 @@ for addr, gl in groups.items():
         "liquidity": sig.get("liquidity"),
         "scans": h.get("scans", 0),
         "accept_streak": h.get("accept_streak", 0),
-        "ready": h.get("accept_streak", 0) >= 5,
+        "ready": bool(h.get("ready", False)),
     }
     if series:
         prices = [p for _, p in series]
@@ -94,5 +97,5 @@ for addr, gl in groups.items():
 tokens.sort(key=lambda e: (0 if "paper" in e["groups"] else 1, 0 if "manual" in e["groups"] else 1, e["name"]))
 
 with open("dashboard.json", "w") as f:
-    json.dump({"updated": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), "tokens": tokens}, f)
+    json.dump({"updated": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), "tokens": tokens, "banned": [{"name": v.get("symbol"), "address": k, "reason": v.get("reason")} for k, v in banned.items()]}, f)
 print(len(tokens), "tokens written")
