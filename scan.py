@@ -3,7 +3,7 @@ import os
 import time
 import urllib.request
 
-QUERIES = ["BONK", "JUP", "WIF", "PYTH", "RAY"]
+QUERIES = []
 for _line in open("watchlist.txt"):
     _parts = _line.split()
     if len(_parts) == 2:
@@ -18,8 +18,9 @@ AUTO_CAP = 15
 DROP_AFTER = 3
 PROMOTE_AFTER = 5
 SKIP = {"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"}
-MAX_HARD_REJECTS = 3
-MAX_UNPROVEN_SCANS = 15
+MAX_HARD_REJECTS = 2
+MAX_UNPROVEN_SCANS = 6
+NEVER_PASSED_SCANS = 3
 TIME_LIMIT = 35 * 60
 START = time.time()
 
@@ -310,6 +311,8 @@ for a, h in list(hist.items()):
     why = None
     if recent.count("H") >= MAX_HARD_REJECTS:
         why = "failed safety checks " + str(recent.count("H")) + " times in the last " + str(len(recent)) + " scans"
+    elif h["scans"] >= NEVER_PASSED_SCANS and not h.get("ever_ready") and "A" not in recent:
+        why = "never passed in " + str(h["scans"]) + " scans"
     elif not h.get("ever_ready") and h["scans"] >= MAX_UNPROVEN_SCANS:
         why = "did not pass " + str(PROMOTE_AFTER) + " scans in a row within " + str(h["scans"]) + " scans"
     if why:
