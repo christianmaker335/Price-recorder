@@ -116,7 +116,7 @@ for addr, gl in groups.items():
     else:
         entry["price"] = None
         entry["series"] = []
- hist_pts = load_history(addr)
+        hist_pts = load_history(addr)
  last_ts = hist_pts[-1][0] if hist_pts else 0
     combined = [p for _, p in hist_pts]
     for stamp, p in series:
