@@ -116,8 +116,8 @@ for addr, gl in groups.items():
     else:
         entry["price"] = None
         entry["series"] = []
-        hist_pts = load_history(addr)
-        last_ts = hist_pts[-1][0] if hist_pts else 0
+ hist_pts = load_history(addr)
+ last_ts = hist_pts[-1][0] if hist_pts else 0
     combined = [p for _, p in hist_pts]
     for stamp, p in series:
         if calendar.timegm(time.strptime(stamp, "%Y-%m-%d %H:%M:%S")) > last_ts + 3600:
