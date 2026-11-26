@@ -1,0 +1,25 @@
+name: Backfill history
+on:
+  schedule:
+    - cron: '41 */6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: backfill
+  cancel-in-progress: false
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python backfill.py
+      - run: |
+          git config user.name "history-bot"
+          git config user.email "history-bot@users.noreply.github.com"
+          git add history
+          git diff --cached --quiet || (git commit -m "update history" && git pull --rebase && git push)
