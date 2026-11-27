@@ -58,6 +58,17 @@ def squeeze(vals, n):
     out[-1] = vals[-1]
     return out
 
+def add_ranges(entry, addr, series):
+    hist_pts = load_history(addr)
+    last_ts = hist_pts[-1][0] if hist_pts else 0
+    combined = [p for _, p in hist_pts]
+    for stamp, p in series:
+        if calendar.timegm(time.strptime(stamp, "%Y-%m-%d %H:%M:%S")) > last_ts + 3600:
+            combined.append(p)
+    entry["history_points"] = len(hist_pts)
+    if len(combined) >= 2:
+        entry["ranges"] = {"1D": combined[-24:], "1W": squeeze(combined[-168:], 168), "1M": squeeze(combined[-720:], 180), "ALL": squeeze(combined, 200)}
+        
 groups = {}
 names = {}
 for label, path in (("manual", "watchlist.txt"), ("auto", "auto_watchlist.txt"), ("paper", "paper_list.txt")):
@@ -116,15 +127,7 @@ for addr, gl in groups.items():
     else:
         entry["price"] = None
         entry["series"] = []
-        hist_pts = load_history(addr)
- last_ts = hist_pts[-1][0] if hist_pts else 0
-    combined = [p for _, p in hist_pts]
-    for stamp, p in series:
-        if calendar.timegm(time.strptime(stamp, "%Y-%m-%d %H:%M:%S")) > last_ts + 3600:
-            combined.append(p)
-    entry["history_points"] = len(hist_pts)
-    if len(combined) >= 2:
-        entry["ranges"] = {"1D": combined[-24:], "1W": squeeze(combined[-168:], 168), "1M": squeeze(combined[-720:], 180), "ALL": squeeze(combined, 200)}
+    add_ranges(entry, addr, series)
     tokens.append(entry)
 
 tokens.sort(key=lambda e: (0 if "paper" in e["groups"] else 1, 0 if "manual" in e["groups"] else 1, e["name"]))
