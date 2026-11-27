@@ -10,7 +10,7 @@ TAKE = 0.04
 STOP = 0.03
 COST = 0.01
 SIZE = 0.10
-CASH0 = 100.0
+CASH0 = 1000.0
 
 def read_list(path):
     items = []
